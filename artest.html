@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>AR Test — EcoRise</title>
+
+  <!-- model-viewer (Google) -->
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <!-- html2canvas for snapshot -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <style>
+    body { font-family: Inter, system-ui, Arial; margin:0; padding:18px; background:#f4fbf7; color:#0f172a; }
+    .card { max-width:920px; margin:0 auto; background:#fff; padding:16px; border-radius:12px; box-shadow:0 10px 30px rgba(10,20,30,0.06); }
+    h1{margin:0 0 8px 0;color:#2f855a}
+    p.small{color:#4c5a6b;margin-top:0}
+    .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    button{padding:10px 12px;border-radius:10px;border:0;background:#2f855a;color:#fff;cursor:pointer;font-weight:700}
+    button.ghost{background:transparent;color:#2f855a;border:1px solid rgba(47,133,90,0.12)}
+    select{padding:8px;border-radius:8px;border:1px solid #e9eef2}
+    #preview { margin-top:12px; display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start }
+    #preview img{max-width:320px;border-radius:8px;box-shadow:0 8px 24px rgba(17,24,39,0.06)}
+    .muted{color:#6b7280;font-size:13px}
+    .note{margin-top:10px;font-size:13px;color:#6b7280}
+    .controls { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+    .center { text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>AR Test — EcoRise</h1>
+    <p class="small">Coba model AR, ambil bukti foto, dan buat sertifikat sederhana. Buka di HP yang mendukung WebXR / Scene Viewer / Quick Look untuk pengalaman AR penuh.</p>
+
+    <!-- model-viewer for AR -->
+    <div style="width:100%;height:460px;background:#eef9f1;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center">
+      <model-viewer id="mv"
+        src="assets/models/tree.glb"
+        alt="Model pohon"
+        ar
+        ar-modes="webxr scene-viewer quick-look"
+        camera-controls
+        environment-image="neutral"
+        exposure="1"
+        style="width:100%;height:100%;"
+      ></model-viewer>
+    </div>
+
+    <div class="row">
+      <label>
+        Pilih tanaman:
+        <select id="plantSelect">
+          <option value="pohon_trembesi" data-model="assets/models/tree.glb">Trembesi (default)</option>
+          <option value="pohon_kelapa" data-model="assets/models/tree_palm.glb">Kelapa (ganti model kalau ada)</option>
+          <option value="bunga" data-model="assets/models/flower.glb">Bunga (ganti model kalau ada)</option>
+        </select>
+      </label>
+
+      <div class="controls">
+        <button id="btnOpenAR">Buka AR (Place in world)</button>
+        <button id="btnCapture" class="ghost">📸 Ambil Bukti (screenshot)</button>
+        <button id="btnCert" class="ghost">📑 Buat Sertifikat</button>
+        <button id="btnDownload" class="ghost" style="display:none">⬇️ Unduh Bukti</button>
+      </div>
+    </div>
+
+    <div id="preview" aria-live="polite"></div>
+    <div class="note">Catatan: Tombol "Buka AR" akan memicu mode AR perangkat (jika didukung). Tombol capture membuat preview lokal yang bisa diunduh atau dijadikan sertifikat.</div>
+  </div>
+
+  <script>
+    const mv = document.getElementById('mv');
+    const plantSelect = document.getElementById('plantSelect');
+    const btnOpenAR = document.getElementById('btnOpenAR');
+    const btnCapture = document.getElementById('btnCapture');
+    const preview = document.getElementById('preview');
+    const btnCert = document.getElementById('btnCert');
+    const btnDownload = document.getElementById('btnDownload');
+
+    // change model when select changes
+    plantSelect.addEventListener('change', (e) => {
+      const sel = e.target.selectedOptions[0];
+      const model = sel.getAttribute('data-model') || sel.value;
+      // check if model path exists in your assets; fallback to default if not
+      mv.src = model;
+    });
+
+    // Open AR: model-viewer has a method to enter AR on supported devices
+    btnOpenAR.addEventListener('click', async () => {
+      try {
+        // request AR - model-viewer shows AR button on supported devices but we can call method:
+        if (typeof mv.activate === 'function') {
+          // older builds used .activateLauncher(); fallback to .enterAR()
+          await mv.enterAR?.();
+        }
+        // model-viewer automatically provides UI to place model in real world
+        // Some browsers will open Scene Viewer / Quick Look automatically when user taps AR icon
+      } catch (e) {
+        console.warn('AR entry failed (may not be supported):', e);
+        alert('Mode AR tidak tersedia di perangkat atau browser ini. Coba di Android (Chrome) atau iOS (Safari).');
+      }
+    });
+
+    // Capture screenshot of the model-viewer area using html2canvas
+    btnCapture.addEventListener('click', async () => {
+      btnCapture.disabled = true;
+      btnCapture.textContent = 'Mengambil...';
+      try {
+        // html2canvas may fail on some platforms for <model-viewer>, but try anyway
+        const canvas = await html2canvas(mv, { useCORS: true, scale: 1 });
+        const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
+        const url = URL.createObjectURL(blob);
+
+        // show preview image
+        preview.innerHTML = `<div class="center"><strong>Preview Bukti</strong><div style="margin-top:8px"><img src="${url}" alt="bukti" /></div></div>`;
+        btnDownload.style.display = 'inline-block';
+        btnDownload.onclick = () => {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'ecorise_proof.jpg';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        };
+
+        // store lastBlob for certificate creation
+        window.__ecorise_last_snapshot = blob;
+      } catch (err) {
+        console.error('Capture failed', err);
+        alert('Gagal mengambil gambar. Coba gunakan fungsi AR capture perangkat atau refresh halaman.');
+      } finally {
+        btnCapture.disabled = false;
+        btnCapture.textContent = '📸 Ambil Bukti (screenshot)';
+      }
+    });
+
+    // Generate simple certificate: draw background + snapshot + text on canvas, then offer download
+    btnCert.addEventListener('click', async () => {
+      const blob = window.__ecorise_last_snapshot;
+      if (!blob) { alert('Tidak ada bukti. Ambil bukti dulu (tombol 📸).'); return; }
+      btnCert.disabled = true;
+      btnCert.textContent = 'Membuat sertifikat...';
+      try {
+        // load image from blob
+        const imgUrl = URL.createObjectURL(blob);
+        const img = await loadImage(imgUrl);
+        // certificate canvas
+        const W = 1200, H = 800;
+        const c = document.createElement('canvas');
+        c.width = W; c.height = H;
+        const ctx = c.getContext('2d');
+        // background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0,0,W,H);
+        // header
+        ctx.fillStyle = '#2f855a';
+        ctx.fillRect(0,0,W,120);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 34px Arial';
+        ctx.fillText('SERTIFIKAT PARTISIPASI ECO-RISE', 28, 72);
+        // snapshot box
+        const imgW = 520, imgH = Math.round(img.height * (imgW / img.width));
+        ctx.fillStyle = '#f3f8f3';
+        ctx.fillRect(40,150,imgW,imgH);
+        ctx.drawImage(img, 40 + 8, 150 + 8, imgW - 16, imgH - 16);
+        // info text
+        ctx.fillStyle = '#0f172a';
+        ctx.font = '22px Arial';
+        const username = (JSON.parse(sessionStorage.getItem('ecorise_user') || '{}').username) || 'Peserta';
+        const plant = plantSelect.options[plantSelect.selectedIndex].text;
+        ctx.fillText(`Diberikan kepada: ${username}`, 600, 220);
+        ctx.fillText(`Jenis Tanaman: ${plant}`, 600, 260);
+        ctx.fillText(`Tanggal: ${new Date().toLocaleString()}`, 600, 300);
+        ctx.fillText(`Lokasi: ${'RW - (verifikasi lokal)'}`, 600, 340);
+        // footer note
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '16px Arial';
+        ctx.fillText('Terima kasih telah berpartisipasi dalam gerakan EcoRise — Tanam Virtual, Tanam Nyata.', 40, H - 60);
+        // create blob and offer download
+        c.toBlob((outBlob) => {
+          const outUrl = URL.createObjectURL(outBlob);
+          preview.innerHTML += `<div class="center" style="margin-left:8px"><strong>Sertifikat</strong><div style="margin-top:8px"><img src="${outUrl}" style="max-width:360px;border-radius:8px" /></div>
+          <div style="margin-top:8px"><a id="downloadCert" href="${outUrl}" download="ecorise_certificate.png" style="text-decoration:none"><button class="ghost">⬇️ Unduh Sertifikat</button></a></div></div>`;
+          // cleanup
+          URL.revokeObjectURL(imgUrl);
+        }, 'image/png');
+      } catch (e) {
+        console.error('Make cert failed', e);
+        alert('Gagal membuat sertifikat.');
+      } finally {
+        btnCert.disabled = false;
+        btnCert.textContent = '📑 Buat Sertifikat';
+      }
+    });
+
+    // tiny helper to load image
+    function loadImage(url) {
+      return new Promise((resolve, reject) => {
+        const i = new Image();
+        i.crossOrigin = 'anonymous';
+        i.onload = () => resolve(i);
+        i.onerror = (e) => reject(e);
+        i.src = url;
+      });
+    }
+
+    // Optional: show AR availability hint
+    (function arHint(){
+      // model-viewer shows its own AR button on supported devices,
+      // but we can hint whether the browser supports WebXR or Quick Look
+      const hint = document.createElement('div');
+      hint.className = 'muted';
+      hint.style.marginTop = '10px';
+      hint.textContent = 'Tip: Untuk pengalaman AR penuh, buka halaman ini di perangkat Android (Chrome) atau iOS (Safari).';
+      document.querySelector('.card').appendChild(hint);
+    })();
+
+  </script>
+</body>
+</html>
